@@ -116,15 +116,8 @@ This project is licensed under the **MIT License** — see the [LICENSE](LICENSE
 
 ---
 
-Made with ❤️ by \[Your Name]
+Made with ❤️ by Hayredin M.
 Happy Tweeting! 🐦
-
-```
-
----
-
-Would you like me to generate this as a file for you, or do you want me to help add your GitHub username and real name before finalizing?
-```
 
 ```
 
