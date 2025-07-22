@@ -1,0 +1,28 @@
+# .gitignore
+data/sentiment140.csv
+data/
+*.pyc
+data/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+env/
+venv/
+ENV/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE files
+.vscode/
+.idea/
+
+# Streamlit cache (optional)
+.streamlit/
+
+# OS files
+.DS_Store
+Thumbs.db
