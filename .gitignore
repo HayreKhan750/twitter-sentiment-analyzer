@@ -1,7 +1,6 @@
 # .gitignore
-data/sentiment140.csv
 *.pyc
-data/
+
 # Python
 __pycache__/
 *.py[cod]
