@@ -1,6 +1,5 @@
 # .gitignore
 data/sentiment140.csv
-data/
 *.pyc
 data/
 # Python
