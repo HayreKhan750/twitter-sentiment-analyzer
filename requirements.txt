@@ -1,6 +1,6 @@
-streamlit==1.32.0 
-scikit-learn==1.4.0 
-nltk==3.8.1 
-pandas==2.2.0 
-numpy==1.26.0 
-matplotlib==3.8.0
+streamlit
+scikit-learn
+nltk
+pandas
+numpy
+matplotlib
