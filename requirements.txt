@@ -1,4 +1,4 @@
-# Billion Dollar Twitter Sentiment Requirements
+# Force Cache Bust - Billion Dollar Twitter Sentiment
 streamlit
 pandas
 plotly
@@ -7,3 +7,5 @@ joblib
 nltk
 numpy
 scipy
+requests
+pytz
