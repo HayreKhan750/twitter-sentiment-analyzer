@@ -1,218 +1,289 @@
-import streamlit as st 
-import pandas as pd 
-import numpy as np 
-import matplotlib.pyplot as plt 
-import re 
-import nltk 
-from nltk.corpus import stopwords 
-from nltk.stem import WordNetLemmatizer 
-from sklearn.feature_extraction.text import TfidfVectorizer 
-from sklearn.naive_bayes import MultinomialNB 
-from sklearn.svm import LinearSVC 
-from sklearn.model_selection import train_test_split 
-from sklearn.metrics import accuracy_score, f1_score, classification_report 
-import pickle 
-import os 
+import streamlit as st
+import re
+import nltk
+from nltk.corpus import stopwords
+import joblib
+from datetime import datetime
+import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
+import numpy as np
 
-nltk.download('stopwords', quiet=True) 
-nltk.download('wordnet', quiet=True) 
+# ---- Page Config ----
+st.set_page_config(
+    page_title="Twitter Sentiment Intel | AI Analytics",
+    page_icon="🐦",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# ── Page config ────────────────────────────────────────────── 
-st.set_page_config( 
-    page_title="Twitter Sentiment Analyzer", 
-    page_icon="🐦", 
-    layout="wide" 
-) 
+# ---- Custom Premium CSS ----
+st.markdown("""
+    <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    .stApp {
+        background-color: #0E1117;
+    }
+    
+    /* Premium Header */
+    .premium-header {
+        background: linear-gradient(90deg, #1DA1F2 0%, #0077B5 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-size: 48px;
+        font-weight: 800;
+        margin-bottom: 32px;
+        text-align: center;
+    }
+    
+    /* Metric Card Styling */
+    .metric-container {
+        background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        border: 1px solid #334155;
+        border-radius: 12px;
+        padding: 24px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        text-align: center;
+    }
+    
+    .metric-label {
+        color: #94a3b8;
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    
+    .metric-value {
+        color: #f8fafc;
+        font-size: 32px;
+        font-weight: 700;
+        margin-top: 8px;
+    }
 
-# ── Styling ────────────────────────────────────────────────── 
-st.markdown(""" 
-<style> 
-    .main { background-color: #0E1117; } 
-    .stTextArea textarea { font-size: 16px; } 
-    .positive { color: #00FF88; font-size: 24px; font-weight: bold; } 
-    .negative { color: #FF4444; font-size: 24px; font-weight: bold; } 
-    .neutral  { color: #FFAA00; font-size: 24px; font-weight: bold; } 
-    .metric-card { 
-        background: #1E2130; 
-        border-radius: 10px; 
-        padding: 20px; 
-        text-align: center; 
-        border: 1px solid #2E3250; 
-    } 
-</style> 
-""", unsafe_allow_html=True) 
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #1e293b;
+        border-right: 1px solid #334155;
+    }
+    
+    /* Text Area Styling */
+    .stTextArea textarea {
+        background-color: #1e293b !important;
+        color: #f8fafc !important;
+        border: 1px solid #334155 !important;
+        border-radius: 10px !important;
+    }
+    
+    /* Button Styling */
+    .stButton button {
+        background: linear-gradient(90deg, #1DA1F2 0%, #0d8ddb 100%) !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 700 !important;
+        border-radius: 8px !important;
+        padding: 10px 24px !important;
+        width: 100% !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+    
+    .stButton button:hover {
+        transform: scale(1.02) !important;
+        box-shadow: 0 0 15px rgba(29, 161, 242, 0.4) !important;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
-# ── Preprocessing ───────────────────────────────────────────── 
-def preprocess(text): 
-    text = text.lower() 
-    text = re.sub(r'http\S+|www\S+', '', text)   # remove URLs 
-    text = re.sub(r'@\w+|#\w+', '', text)         # remove mentions/hashtags 
-    text = re.sub(r'[^a-z\s]', '', text)           # remove special chars 
-    tokens = text.split() 
-    stop_words = set(stopwords.words('english')) 
-    lemmatizer = WordNetLemmatizer() 
-    tokens = [lemmatizer.lemmatize(w) for w in tokens if w not in stop_words] 
-    return ' '.join(tokens) 
+# ---- Helper Functions ----
+@st.cache_resource
+def setup_nltk():
+    try:
+        nltk.download('stopwords', quiet=True)
+    except:
+        pass
+    return set(stopwords.words('english'))
 
-# ── Load or train model ─────────────────────────────────────── 
-@st.cache_resource 
-def load_model(): 
-    # Sample training data — replace with your actual dataset 
-    sample_data = { 
-        'text': [ 
-            "I love this product amazing great fantastic", 
-            "This is wonderful best day ever happy", 
-            "Great experience highly recommend excellent", 
-            "Terrible awful horrible worst experience", 
-            "I hate this so bad disgusting waste", 
-            "Disappointing bad quality poor service", 
-            "It's okay nothing special average mediocre", 
-            "Not bad not great just fine neutral", 
-            "Could be better could be worse alright" 
-        ], 
-        'label': ['Positive','Positive','Positive', 
-                  'Negative','Negative','Negative', 
-                  'Neutral','Neutral','Neutral'] 
-    } 
-    df = pd.DataFrame(sample_data) 
-    df['clean'] = df['text'].apply(preprocess) 
+STOP_WORDS = setup_nltk()
 
-    vectorizer = TfidfVectorizer(max_features=5000, ngram_range=(1,2)) 
-    X = vectorizer.fit_transform(df['clean']) 
-    y = df['label'] 
+def clean_text(text):
+    text = text.lower()
+    text = re.sub(r'http\S+', '', text)
+    text = re.sub(r'@\w+', '', text)
+    text = re.sub(r'[^a-zA-Z\s]', '', text)
+    text = ' '.join([word for word in text.split() if word not in STOP_WORDS])
+    return text
 
-    nb_model  = MultinomialNB() 
-    svm_model = LinearSVC() 
-    nb_model.fit(X, y) 
-    svm_model.fit(X, y) 
+@st.cache_resource
+def load_models():
+    try:
+        model = joblib.load('models/model.pkl')
+        vectorizer = joblib.load('models/vectorizer.pkl')
+        return model, vectorizer
+    except Exception as e:
+        st.error(f"Error loading models: {e}")
+        return None, None
 
-    return vectorizer, nb_model, svm_model 
+model, vectorizer = load_models()
 
-vectorizer, nb_model, svm_model = load_model() 
+# ---- Sidebar Branding ----
+st.sidebar.markdown("""
+    <div style='text-align: center; padding: 20px;'>
+        <h2 style='color: #1DA1F2; margin-bottom: 0;'>🐦 SENTIMENT INTEL</h2>
+        <p style='color: #94a3b8; font-size: 12px;'>Developed by Hayredin</p>
+    </div>
+    <div style='text-align: center; padding-bottom: 20px;'>
+        <a href='https://hayredin.vercel.app' target='_blank' style='text-decoration: none;'>
+            <button style='background-color: #1DA1F2; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; width: 100%;'>
+                🌐 Visit Portfolio
+            </button>
+        </a>
+        <div style='margin-top: 15px;'>
+            <a href='https://github.com/HayreKhan750' target='_blank' style='color: #94a3b8; text-decoration: none; font-size: 14px; margin-right: 15px;'>🐙 GitHub</a>
+            <a href='https://linkedin.com' target='_blank' style='color: #94a3b8; text-decoration: none; font-size: 14px;'>💼 LinkedIn</a>
+        </div>
+    </div>
+    <hr style='border: 0; border-top: 1px solid #334155; margin: 0 20px 20px 20px;'>
+""", unsafe_allow_html=True)
 
-# ── UI ──────────────────────────────────────────────────────── 
-st.title("🐦 Twitter Sentiment Analyzer") 
-st.markdown("**NLP Pipeline** — TF-IDF · Naive Bayes · SVM · Built by `https://hayredin.vercel.app` ") 
-st.divider() 
+page = st.sidebar.radio("Navigation", ["⚡ Real-time Analysis", "📊 Analytics Hub", "📂 History Explorer"])
 
-tab1, tab2, tab3 = st.tabs(["🔍 Analyze Tweet", "📊 Batch Analysis", "📈 Model Comparison"]) 
+# ---- Initialization ----
+if "history" not in st.session_state:
+    st.session_state.history = []
 
-# ── Tab 1: Single tweet ─────────────────────────────────────── 
-with tab1: 
-    col1, col2 = st.columns([2, 1]) 
-    with col1: 
-        tweet = st.text_area("Enter a tweet to analyze:", 
-            placeholder="Type any tweet here...", height=120) 
-        model_choice = st.radio("Choose model:", 
-            ["Naive Bayes", "SVM", "Both"], horizontal=True) 
+# ---- Real-time Analysis ----
+if page == "⚡ Real-time Analysis":
+    st.markdown("<h1 class='premium-header'>Twitter Sentiment Intelligence</h1>", unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.markdown("### ✍️ Input Analysis")
+        tweet_input = st.text_area("Analyze tweet sentiment in milliseconds:", placeholder="Enter a tweet or any text to decode its emotional signature...", height=150)
+        
+        analyze_btn = st.button("🚀 EXECUTE AI DECODER")
+        
+        if analyze_btn:
+            if not tweet_input.strip():
+                st.warning("⚠️ Please provide input for the engine.")
+            elif model and vectorizer:
+                with st.spinner("Decoding sentiment..."):
+                    clean = clean_text(tweet_input)
+                    vec = vectorizer.transform([clean])
+                    pred = model.predict(vec)[0]
+                    proba = model.predict_proba(vec)[0]
+                    confidence = max(proba) * 100
+                    
+                    sentiment_label = "POSITIVE" if pred == 1 else "NEGATIVE"
+                    sentiment_color = "#10b981" if pred == 1 else "#ef4444"
+                    sentiment_emoji = "😊" if pred == 1 else "😞"
+                    
+                    st.session_state.history.append({
+                        "text": tweet_input,
+                        "sentiment": sentiment_label,
+                        "confidence": confidence,
+                        "timestamp": datetime.now().strftime("%H:%M:%S")
+                    })
+                    
+                    st.markdown(f"""
+                        <div style='background: #1e293b; padding: 30px; border-radius: 12px; border-left: 5px solid {sentiment_color};'>
+                            <div style='color: #94a3b8; font-size: 14px; text-transform: uppercase;'>SENTIMENT RESULT</div>
+                            <div style='color: {sentiment_color}; font-size: 48px; font-weight: 800;'>{sentiment_label} {sentiment_emoji}</div>
+                            <div style='color: #f8fafc; font-size: 18px; margin-top: 10px;'>AI Confidence: <b>{confidence:.2f}%</b></div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if pred == 1: st.balloons()
+            else:
+                st.error("Engine failure: Models not detected.")
 
-        if st.button("Analyze Sentiment 🔍", use_container_width=True): 
-            if tweet.strip(): 
-                clean = preprocess(tweet) 
-                vec   = vectorizer.transform([clean]) 
+    with col2:
+        st.markdown("### 📈 Confidence Gauge")
+        if st.session_state.history:
+            last = st.session_state.history[-1]
+            fig = go.Figure(go.Indicator(
+                mode = "gauge+number",
+                value = last['confidence'],
+                domain = {'x': [0, 1], 'y': [0, 1]},
+                title = {'text': "Analysis Confidence", 'font': {'size': 24, 'color': '#f8fafc'}},
+                gauge = {
+                    'axis': {'range': [0, 100], 'tickwidth': 1, 'tickcolor': "#f8fafc"},
+                    'bar': {'color': "#1DA1F2"},
+                    'bgcolor': "#1e293b",
+                    'borderwidth': 2,
+                    'bordercolor': "#334155",
+                    'steps': [
+                        {'range': [0, 50], 'color': '#ef4444'},
+                        {'range': [50, 80], 'color': '#f59e0b'},
+                        {'range': [80, 100], 'color': '#10b981'}],
+                }
+            ))
+            fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', font={'color': "#f8fafc", 'family': "Inter"}, height=300, margin=dict(l=20, r=20, t=50, b=20))
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Awaiting input for visualization...")
 
-                if model_choice == "Naive Bayes": 
-                    pred = nb_model.predict(vec)[0] 
-                    proba = nb_model.predict_proba(vec)[0] 
-                    labels = nb_model.classes_ 
-                elif model_choice == "SVM": 
-                    pred = svm_model.predict(vec)[0] 
-                    proba = None 
-                    labels = None 
-                else: 
-                    nb_pred  = nb_model.predict(vec)[0] 
-                    svm_pred = svm_model.predict(vec)[0] 
-                    pred = nb_pred 
-                    proba = nb_model.predict_proba(vec)[0] 
-                    labels = nb_model.classes_ 
-                    st.info(f"**Naive Bayes:** {nb_pred} | **SVM:** {svm_pred}") 
+# ---- Analytics Hub ----
+elif page == "📊 Analytics Hub":
+    st.markdown("<h1 class='premium-header'>Sentiment Ecosystem</h1>", unsafe_allow_html=True)
+    
+    if st.session_state.history:
+        h_df = pd.DataFrame(st.session_state.history)
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.markdown(f"""<div class='metric-container'><div class='metric-label'>Total Analyzed</div><div class='metric-value'>{len(h_df)}</div></div>""", unsafe_allow_html=True)
+        with c2:
+            pos_count = len(h_df[h_df['sentiment'] == 'POSITIVE'])
+            st.markdown(f"""<div class='metric-container'><div class='metric-label'>Positive Ratio</div><div class='metric-value'>{(pos_count/len(h_df)*100):.1f}%</div></div>""", unsafe_allow_html=True)
+        with c3:
+            avg_conf = h_df['confidence'].mean()
+            st.markdown(f"""<div class='metric-container'><div class='metric-label'>Avg Confidence</div><div class='metric-value'>{avg_conf:.1f}%</div></div>""", unsafe_allow_html=True)
+            
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            fig_pie = px.pie(h_df, names='sentiment', hole=.6, color='sentiment',
+                            color_discrete_map={'POSITIVE': '#10b981', 'NEGATIVE': '#ef4444'},
+                            title="Overall Sentiment Distribution")
+            fig_pie.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_pie, use_container_width=True)
+            
+        with col2:
+            fig_trend = px.line(h_df, x='timestamp', y='confidence', title="Analysis Confidence Trend",
+                               line_shape='spline', markers=True)
+            fig_trend.update_layout(template='plotly_dark', paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)')
+            st.plotly_chart(fig_trend, use_container_width=True)
+    else:
+        st.warning("No analytics available. Run some analyses first!")
 
-                emoji = "✅" if pred=="Positive" else "❌" if pred=="Negative" else "⚪" 
-                css   = pred.lower() 
-                st.markdown(f'<p class="{css}">{emoji} {pred}</p>', 
-                    unsafe_allow_html=True) 
+# ---- History Explorer ----
+elif page == "📂 History Explorer":
+    st.markdown("<h1 class='premium-header'>Intelligence Archives</h1>", unsafe_allow_html=True)
+    
+    if st.session_state.history:
+        h_df = pd.DataFrame(st.session_state.history)
+        st.dataframe(h_df[['timestamp', 'sentiment', 'confidence', 'text']], use_container_width=True)
+        
+        st.download_button("📥 Export Intelligence Report (CSV)", 
+                          data=h_df.to_csv(index=False).encode('utf-8'),
+                          file_name=f"sentiment_report_{datetime.now().date()}.csv",
+                          mime='text/csv', use_container_width=True)
+    else:
+        st.info("Archives are empty. Start analyzing to build your history.")
 
-                if proba is not None and labels is not None: 
-                    fig, ax = plt.subplots(figsize=(6,3)) 
-                    colors = ['#00FF88','#FF4444','#FFAA00'] 
-                    bars = ax.barh(labels, proba, color=colors) 
-                    ax.set_xlim(0,1) 
-                    ax.set_facecolor('#1E2130') 
-                    fig.patch.set_facecolor('#1E2130') 
-                    ax.tick_params(colors='white') 
-                    for bar, p in zip(bars, proba): 
-                        ax.text(bar.get_width()+0.01, bar.get_y()+bar.get_height()/2, 
-                                f'{p:.1%}', va='center', color='white', fontsize=11) 
-                    st.pyplot(fig) 
-            else: 
-                st.warning("Please enter a tweet first.") 
-
-# ── Tab 2: Batch analysis ───────────────────────────────────── 
-with tab2: 
-    st.markdown("**Paste multiple tweets (one per line):**") 
-    batch_input = st.text_area("", height=200, 
-        placeholder="I love this!\nThis is terrible.\nIt's okay I guess.") 
-
-    if st.button("Analyze All 📊", use_container_width=True): 
-        if batch_input.strip(): 
-            tweets = [t.strip() for t in batch_input.split('\n') if t.strip()] 
-            results = [] 
-            for t in tweets: 
-                clean = preprocess(t) 
-                vec   = vectorizer.transform([clean]) 
-                nb    = nb_model.predict(vec)[0] 
-                svm   = svm_model.predict(vec)[0] 
-                results.append({'Tweet': t[:60]+'...' if len(t)>60 else t, 
-                                 'Naive Bayes': nb, 'SVM': svm}) 
-
-            df_results = pd.DataFrame(results) 
-            st.dataframe(df_results, use_container_width=True) 
-
-            # Pie chart 
-            counts = df_results['Naive Bayes'].value_counts() 
-            fig, ax = plt.subplots(figsize=(5,4)) 
-            colors  = {'Positive':'#00FF88','Negative':'#FF4444','Neutral':'#FFAA00'} 
-            ax.pie(counts.values, 
-                   labels=counts.index, 
-                   colors=[colors.get(l,'gray') for l in counts.index], 
-                   autopct='%1.1f%%', 
-                   textprops={'color':'white'}) 
-            fig.patch.set_facecolor('#1E2130') 
-            st.pyplot(fig) 
-
-# ── Tab 3: Model comparison ─────────────────────────────────── 
-with tab3: 
-    st.markdown("### Naive Bayes vs SVM — Why both?") 
-    col1, col2 = st.columns(2) 
-    with col1: 
-        st.markdown(""" 
-        **Naive Bayes** 
-        - Fast training, works well with small datasets 
-        - Gives probability scores per class 
-        - Best for: quick classification, probabilistic output 
-        - Weakness: assumes feature independence 
-        """) 
-    with col2: 
-        st.markdown(""" 
-        **SVM (LinearSVC)** 
-        - Finds optimal decision boundary 
-        - Handles high-dimensional TF-IDF vectors well 
-        - Best for: text classification accuracy 
-        - Weakness: no probability output by default 
-        """) 
-
-    st.divider() 
-    st.markdown("### Pipeline Architecture") 
-    st.code(""" 
-Raw Tweet 
-    ↓ Lowercase, remove URLs/mentions/hashtags 
-    ↓ Remove special characters 
-    ↓ Tokenization 
-    ↓ Stopword removal (NLTK) 
-    ↓ Lemmatization (WordNetLemmatizer) 
-    ↓ TF-IDF Vectorization (max 5000 features, bigrams) 
-    ↓ Model prediction (Naive Bayes / SVM) 
-    ↓ Sentiment label: Positive / Negative / Neutral 
-    """, language="text") 
-
-    st.markdown("*Built by `https://hayredin.vercel.app`  — github.com/HayreKhan750*")
+# ---- Footer ----
+st.markdown("---")
+st.markdown(f"""
+    <div style='text-align: center; color: #64748b; font-size: 14px;'>
+        Built by <a href='https://hayredin.vercel.app' target='_blank' style='color: #1DA1F2; text-decoration: none;'>Hayredin</a> | 
+        Powered by 🐦 Sentiment Intel AI | 
+        <a href='https://github.com/HayreKhan750' target='_blank' style='color: #1DA1F2; text-decoration: none;'>GitHub</a> | 
+        © {datetime.now().year} Enterprise Solutions
+    </div>
+""", unsafe_allow_html=True)

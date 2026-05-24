@@ -1,6 +1,8 @@
+# Billion Dollar Twitter Sentiment Requirements
 streamlit
-scikit-learn
-nltk
 pandas
+plotly
+scikit-learn
+joblib
+nltk
 numpy
-matplotlib
