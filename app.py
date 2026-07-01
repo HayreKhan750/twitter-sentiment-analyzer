@@ -117,6 +117,29 @@ def clean_text(text):
     text = ' '.join([word for word in text.split() if word not in STOP_WORDS])
     return text
 
+def find_text_column(columns):
+    preferred_columns = [
+        "text",
+        "tweet",
+        "tweet_text",
+        "full_text",
+        "content",
+        "body",
+    ]
+    normalized = {column.lower().strip(): column for column in columns}
+    for name in preferred_columns:
+        if name in normalized:
+            return normalized[name]
+    return None
+
+def analyze_text(text):
+    clean = clean_text(str(text))
+    vec = vectorizer.transform([clean])
+    pred = model.predict(vec)[0]
+    proba = model.predict_proba(vec)[0]
+    sentiment_label = "POSITIVE" if pred == 1 else "NEGATIVE"
+    return sentiment_label, max(proba) * 100
+
 @st.cache_resource
 def load_models():
     try:
@@ -149,7 +172,7 @@ st.sidebar.markdown("""
     <hr style='border: 0; border-top: 1px solid #334155; margin: 0 20px 20px 20px;'>
 """, unsafe_allow_html=True)
 
-page = st.sidebar.radio("Navigation", ["⚡ Real-time Analysis", "📊 Analytics Hub", "📂 History Explorer"])
+page = st.sidebar.radio("Navigation", ["⚡ Real-time Analysis", "📊 Analytics Hub", "📥 Batch CSV Import", "📂 History Explorer"])
 
 # ---- Initialization ----
 if "history" not in st.session_state:
@@ -172,15 +195,9 @@ if page == "⚡ Real-time Analysis":
                 st.warning("⚠️ Please provide input for the engine.")
             elif model and vectorizer:
                 with st.spinner("Decoding sentiment..."):
-                    clean = clean_text(tweet_input)
-                    vec = vectorizer.transform([clean])
-                    pred = model.predict(vec)[0]
-                    proba = model.predict_proba(vec)[0]
-                    confidence = max(proba) * 100
-                    
-                    sentiment_label = "POSITIVE" if pred == 1 else "NEGATIVE"
-                    sentiment_color = "#10b981" if pred == 1 else "#ef4444"
-                    sentiment_emoji = "😊" if pred == 1 else "😞"
+                    sentiment_label, confidence = analyze_text(tweet_input)
+                    sentiment_color = "#10b981" if sentiment_label == "POSITIVE" else "#ef4444"
+                    sentiment_emoji = "😊" if sentiment_label == "POSITIVE" else "😞"
                     
                     st.session_state.history.append({
                         "text": tweet_input,
@@ -197,7 +214,7 @@ if page == "⚡ Real-time Analysis":
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    if pred == 1: st.balloons()
+                    if sentiment_label == "POSITIVE": st.balloons()
             else:
                 st.error("Engine failure: Models not detected.")
 
@@ -261,6 +278,40 @@ elif page == "📊 Analytics Hub":
             st.plotly_chart(fig_trend, use_container_width=True)
     else:
         st.warning("No analytics available. Run some analyses first!")
+
+# ---- Batch CSV Import ----
+elif page == "📥 Batch CSV Import":
+    st.markdown("<h1 class='premium-header'>Batch Tweet Analysis</h1>", unsafe_allow_html=True)
+    st.write("Upload a CSV with tweet text. TweetClaw exports work when they include a text-like column.")
+
+    uploaded_file = st.file_uploader("CSV file", type="csv")
+
+    if uploaded_file is not None:
+        data = pd.read_csv(uploaded_file)
+        text_column = find_text_column(data.columns)
+
+        if text_column is None:
+            st.warning("Add a text, tweet, tweet_text, full_text, content, or body column.")
+        elif model and vectorizer:
+            scored_rows = []
+            for _, row in data.iterrows():
+                sentiment_label, confidence = analyze_text(row[text_column])
+                scored_rows.append({
+                    "sentiment": sentiment_label,
+                    "confidence": confidence,
+                })
+
+            scored = pd.concat([data.reset_index(drop=True), pd.DataFrame(scored_rows)], axis=1)
+            st.dataframe(scored[[text_column, "sentiment", "confidence"]].head(50), use_container_width=True)
+            st.download_button(
+                "Download Scored CSV",
+                data=scored.to_csv(index=False).encode("utf-8"),
+                file_name=f"sentiment_batch_{datetime.now().date()}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+        else:
+            st.error("Engine failure: Models not detected.")
 
 # ---- History Explorer ----
 elif page == "📂 History Explorer":
