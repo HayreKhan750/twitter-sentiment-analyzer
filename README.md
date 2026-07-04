@@ -10,6 +10,7 @@ Powered by **Natural Language Processing (NLP)** and a **Naive Bayes** machine l
 - 🐦 Analyze real-world tweets or any text input you want
 - 🔍 Fast and reliable sentiment predictions using a trained Naive Bayes classifier
 - 🧹 Automatic text cleaning: removes URLs, mentions, punctuation, and stopwords
+- 📦 Batch sentiment analysis from Xquik JSON, JSONL, or CSV exports
 - 📊 Displays sentiment with confidence percentage and visual feedback (balloons for positive!)
 - 🎨 Sleek, responsive, and user-friendly Streamlit interface
 - 🧑‍💻 Easy to customize and extend for other NLP tasks
@@ -86,6 +87,14 @@ streamlit run app/app.py
 ```
 
 5️⃣ **Open your browser** at the URL shown in the terminal (usually `http://localhost:8501`) and start analyzing tweets!
+
+---
+
+## 📦 Xquik Export Batch Analysis
+
+Use the **Xquik Export Batch** uploader in the app to analyze exported tweet
+files. Supported formats are JSON, JSONL, and CSV with a text-like column such
+as `text`, `tweet`, `full_text`, `content`, or `body`.
 
 ---
 

@@ -8,6 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+from xquik_export import parse_xquik_export
 
 # ---- Page Config ----
 st.set_page_config(
@@ -198,6 +199,33 @@ if page == "⚡ Real-time Analysis":
                     """, unsafe_allow_html=True)
                     
                     if pred == 1: st.balloons()
+            else:
+                st.error("Engine failure: Models not detected.")
+
+        st.markdown("### 📦 Xquik Export Batch")
+        uploaded_export = st.file_uploader("Upload Xquik JSON, JSONL, or CSV export", type=["json", "jsonl", "csv"])
+        if st.button("Analyze Xquik Export"):
+            if uploaded_export is None:
+                st.warning("Upload an export file first.")
+            elif model and vectorizer:
+                try:
+                    export_texts = parse_xquik_export(uploaded_export.getvalue(), uploaded_export.name)
+                except ValueError as exc:
+                    st.error(str(exc))
+                else:
+                    for export_text in export_texts:
+                        clean = clean_text(export_text)
+                        vec = vectorizer.transform([clean])
+                        pred = model.predict(vec)[0]
+                        proba = model.predict_proba(vec)[0]
+                        confidence = max(proba) * 100
+                        st.session_state.history.append({
+                            "text": export_text,
+                            "sentiment": "POSITIVE" if pred == 1 else "NEGATIVE",
+                            "confidence": confidence,
+                            "timestamp": datetime.now().strftime("%H:%M:%S")
+                        })
+                    st.success(f"Analyzed {len(export_texts)} export rows.")
             else:
                 st.error("Engine failure: Models not detected.")
 
